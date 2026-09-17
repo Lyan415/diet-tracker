@@ -153,6 +153,20 @@ function writeOutbox(items) {
 }
 export const outboxSize = () => readOutbox().length;
 
+/** 待送佇列裡最後一筆的失敗原因，排查用 */
+export function outboxLastError() {
+  const box = readOutbox();
+  if (!box.length) return null;
+  const last = box[box.length - 1];
+  return { action: last.action, at: last.at, error: last.error };
+}
+
+/** 清空待送佇列。送不出去又不想留著時用，本機資料不受影響。 */
+export function clearOutbox() {
+  writeOutbox([]);
+  emit('sync');
+}
+
 /**
  * 寫入一律立刻送出，不受 syncing 影響。
  * （用 isSyncing 當互斥鎖是經典地雷：Apps Script 冷啟動 5~10 秒，

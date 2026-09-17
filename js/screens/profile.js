@@ -1,5 +1,5 @@
 import { state, getMeta, setMeta, saveBody, deleteBody, bodyHistory, latestBody,
-         syncFromCloud, flushOutbox, outboxSize } from '../store.js';
+         syncFromCloud, flushOutbox, outboxSize, outboxLastError, clearOutbox } from '../store.js';
 import { suggestedTargets, effectiveTargets, leanMass, ageFrom } from '../nutrition.js';
 import { ACTIVITY_LEVELS, APP_VERSION, DEFAULT_GEMINI_MODEL } from '../config.js';
 import { getCredentials, setCredentials, ping, validGasUrl } from '../gas.js';
@@ -199,6 +199,7 @@ function historyCard() {
 function connCard() {
   const c = getCredentials();
   const pending = outboxSize();
+  const lastErr = outboxLastError();
   return `<div class="card">
     <h2 class="card__title">
       連線設定
@@ -227,11 +228,15 @@ function connCard() {
         <label for="cModel">Gemini 模型</label>
         <input id="cModel" type="text" value="${esc(c.geminiModel || DEFAULT_GEMINI_MODEL)}" spellcheck="false">
       </div>
+      ${lastErr ? `<p class="small" style="margin:0;color:var(--ps-circle)">
+        最後一筆失敗：${esc(lastErr.action)}（${esc(lastErr.at)}）<br>${esc(lastErr.error)}
+      </p>` : ''}
       <p class="small" id="connResult" style="margin:0;min-height:1.3em"></p>
       <div class="row row--wrap">
         <button class="btn btn--ghost btn--sm" data-act="testConn">測試連線</button>
         <button class="btn btn--ghost btn--sm" data-act="resync">重新同步</button>
         ${pending ? '<button class="btn btn--ghost btn--sm" data-act="flush">重送待上傳</button>' : ''}
+        ${pending ? '<button class="btn btn--ghost btn--sm" data-act="clearBox">清空佇列</button>' : ''}
         <button class="btn btn--primary btn--sm" data-act="saveConn">儲存設定</button>
       </div>
     </div>
@@ -308,6 +313,13 @@ function wire(root) {
 
       if (act === 'saveConn')  await saveConnection();
       if (act === 'resync')    { await syncFromCloud(); toast('已重新同步', 'ok'); renderProfile(); }
+      if (act === 'clearBox') {
+        if (await confirmBox('要清空待送佇列嗎？這些變更就不會再上傳，但本機和雲端已有的資料不受影響。', '清空')) {
+          clearOutbox();
+          renderProfile();
+        }
+      }
+
       if (act === 'flush') {
         const r = await flushOutbox();
         toast(`重送 ${r.sent} 筆，剩 ${r.failed} 筆`, r.failed ? 'error' : 'ok');

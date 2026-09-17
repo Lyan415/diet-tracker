@@ -53,6 +53,7 @@ function updateStatusBar() {
   } else {
     bar.hidden = true;
   }
+  document.body.classList.toggle('has-status', !bar.hidden);
 }
 
 async function boot() {

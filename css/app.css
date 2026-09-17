@@ -33,6 +33,11 @@
 
 * { box-sizing: border-box; }
 
+/* 瀏覽器內建的 [hidden] { display:none } 屬於 user-agent 樣式，
+   會被任何作者寫的 display 規則蓋掉（例如下面的 .gate { display:grid }）。
+   沒有這一行，用 hidden 屬性切換的畫面就不會真的隱藏。 */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -45,7 +50,13 @@ html, body {
   overscroll-behavior-y: contain;
 }
 
-body { padding-bottom: env(safe-area-inset-bottom); }
+body {
+  padding-bottom: env(safe-area-inset-bottom);
+  transition: padding-top .15s ease;
+}
+
+/* 狀態列是 position:fixed，出現時要把內容整個往下推，否則會壓住標題 */
+body.has-status { padding-top: 34px; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
 

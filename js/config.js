@@ -1,5 +1,5 @@
 // 改版時只要動這一行，畫面右下角的版本標記就會跟著變，方便確認手機拿到的是不是新版
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';
 
 export const TZ = 'Asia/Taipei';
 
