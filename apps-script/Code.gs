@@ -18,12 +18,13 @@
 // ============================================================
 
 const API_TOKEN = 'CHANGE-ME-TO-A-LONG-RANDOM-STRING';   // ← 一定要改
-const SCRIPT_VERSION = 'diet-1.0.0';
+const SCRIPT_VERSION = 'diet-1.1.0';
 const TIMEZONE = 'Asia/Taipei';
 const PHOTO_FOLDER_NAME = '飲控App照片';
 
 const SHEETS = {
   Foods: ['id', 'name', 'aliases', 'category', 'baseUnit', 'unitLabel', 'gramsPerUnit',
+          'servingGrams', 'packGrams',
           'kcal', 'protein', 'fat', 'carb', 'sugar', 'fiber', 'sodium',
           'price', 'source', 'sourceNote', 'confidence', 'useCount', 'lastUsedAt',
           'imageUrl', 'createdAt', 'updatedAt'],
@@ -110,15 +111,20 @@ function loadAll() {
 function sheetToObjects(name) {
   const sheet = getSheet(name);
   const headers = SHEETS[name];
+  const col = headerIndex(sheet, headers);          // 依實際標題列定位
   const last = sheet.getLastRow();
+  const width = Math.max(sheet.getLastColumn(), 1);
   if (last < 2) return [];
-  const values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
+  const values = sheet.getRange(2, 1, last - 1, width).getValues();
   const out = [];
   for (let i = 0; i < values.length; i++) {
     const row = values[i];
     if (!row[0] && row[0] !== 0) continue;
     const obj = {};
-    for (let c = 0; c < headers.length; c++) obj[headers[c]] = cellToStr(row[c]);
+    for (let h = 0; h < headers.length; h++) {
+      const c = col[headers[h]];
+      obj[headers[h]] = c > 0 ? cellToStr(row[c - 1]) : '';
+    }
     out.push(obj);
   }
   return out;
@@ -156,9 +162,16 @@ function upsertRow(sheetName, obj) {
   if (!obj || !obj.id) return json({ success: false, error: 'Missing id' });
   const headers = SHEETS[sheetName];
   const sheet = getSheet(sheetName);
-  const row = headers.map(function (h) {
+  const col = headerIndex(sheet, headers);
+  const width = Math.max(sheet.getLastColumn(), headers.length);
+
+  // 依實際標題列排好一整列，沒對應到的欄位留空
+  const row = new Array(width).fill('');
+  headers.forEach(function (h) {
+    const c = col[h];
+    if (c <= 0) return;
     const v = obj[h];
-    return (v === null || v === undefined) ? '' : String(v);
+    row[c - 1] = (v === null || v === undefined) ? '' : String(v);
   });
 
   let rowNum = findRowById(sheet, obj.id);
@@ -167,10 +180,11 @@ function upsertRow(sheetName, obj) {
     rowNum = sheet.getLastRow();
   }
   // appendRow 可能已把日期字串轉成 Date，所以先強制該列的文字欄位格式，再重寫一次
-  textColsFor(headers).forEach(function (col) {
-    sheet.getRange(rowNum, col).setNumberFormat('@');
+  textColsFor(headers).forEach(function (i) {
+    const c = col[headers[i - 1]];
+    if (c > 0) sheet.getRange(rowNum, c).setNumberFormat('@');
   });
-  sheet.getRange(rowNum, 1, 1, headers.length).setValues([row]);
+  sheet.getRange(rowNum, 1, 1, width).setValues([row]);
 
   return json({ success: true, id: obj.id, row: rowNum });
 }
@@ -238,20 +252,27 @@ function saveAll(data) {
     if (!data || !data[key]) return;
     const headers = SHEETS[name];
     const sheet = getSheet(name);
+    const col = headerIndex(sheet, headers);
+    const width = Math.max(sheet.getLastColumn(), headers.length);
     if (sheet.getLastRow() > 1) {
-      sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).clearContent();
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, width).clearContent();
     }
     const list = data[key];
     if (!list.length) { report[key] = 0; return; }
-    textColsFor(headers).forEach(function (col) {
-      sheet.getRange(2, col, Math.max(list.length, 1), 1).setNumberFormat('@');
-    });
     const rows = list.map(function (o) {
-      return headers.map(function (h) {
-        return (o[h] === null || o[h] === undefined) ? '' : String(o[h]);
+      const row = new Array(width).fill('');
+      headers.forEach(function (h) {
+        const c = col[h];
+        if (c <= 0) return;
+        row[c - 1] = (o[h] === null || o[h] === undefined) ? '' : String(o[h]);
       });
+      return row;
     });
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    textColsFor(headers).forEach(function (i) {
+      const c = col[headers[i - 1]];
+      if (c > 0) sheet.getRange(2, c, rows.length, 1).setNumberFormat('@');
+    });
+    sheet.getRange(2, 1, rows.length, width).setValues(rows);
     report[key] = rows.length;
   });
   return json({ success: true, written: report });
@@ -300,18 +321,56 @@ function getPhotoFolder() {
 
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const headers = SHEETS[name];
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
-    const headers = SHEETS[name];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers])
          .setFontWeight('bold').setBackground('#1b1e29').setFontColor('#ffffff');
     sheet.setFrozenRows(1);
     textColsFor(headers).forEach(function (col) {
       sheet.getRange(2, col, sheet.getMaxRows() - 1, 1).setNumberFormat('@');
     });
+  } else {
+    reconcileHeaders(sheet, headers);
   }
   return sheet;
+}
+
+/**
+ * 版本升級時補欄位用。
+ * 只在既有標題列之後「插入」缺少的欄位，絕不刪除或重排已存在的欄位，
+ * 所以舊資料不會跑掉。新欄位在舊的資料列上是空白，用戶端會當成 null。
+ */
+function reconcileHeaders(sheet, headers) {
+  const width = Math.max(sheet.getLastColumn(), 1);
+  const existing = sheet.getRange(1, 1, 1, width).getValues()[0]
+                        .map(function (h) { return String(h).trim(); });
+
+  const missing = [];
+  for (let i = 0; i < headers.length; i++) {
+    if (existing.indexOf(headers[i]) === -1) missing.push(headers[i]);
+  }
+  if (!missing.length) return;
+
+  // 新欄位一律接在最後面，位置由 headerIndex() 動態查，不靠固定順序
+  const start = existing.length + 1;
+  if (sheet.getMaxColumns() < start + missing.length - 1) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(),
+                             start + missing.length - 1 - sheet.getMaxColumns());
+  }
+  sheet.getRange(1, start, 1, missing.length).setValues([missing])
+       .setFontWeight('bold').setBackground('#1b1e29').setFontColor('#ffffff');
+}
+
+/** 依標題名稱查欄位位置（1-based），找不到回 -1 */
+function headerIndex(sheet, headers) {
+  const width = Math.max(sheet.getLastColumn(), 1);
+  const row = sheet.getRange(1, 1, 1, width).getValues()[0]
+                   .map(function (h) { return String(h).trim(); });
+  const map = {};
+  headers.forEach(function (h) { map[h] = row.indexOf(h) + 1; });
+  return map;
 }
 
 function json(obj) {

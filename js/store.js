@@ -59,7 +59,8 @@ function saveLocal() {
 //  正規化（Sheets 存出來一律是字串，這裡轉回該有的型別）
 // ============================================================
 
-const NUM_FIELDS = ['gramsPerUnit', 'kcal', 'protein', 'fat', 'carb', 'sugar',
+const NUM_FIELDS = ['gramsPerUnit', 'servingGrams', 'packGrams',
+                    'kcal', 'protein', 'fat', 'carb', 'sugar',
                     'fiber', 'sodium', 'price', 'useCount', 'qty', 'grams', 'weight', 'bodyFat'];
 
 function normalizeNums(obj) {
@@ -208,6 +209,7 @@ export function makeFood(patch = {}) {
   return normalizeFood({
     id: uid('f'), name: '', aliases: [], category: '', baseUnit: 'gram',
     unitLabel: '100 克', gramsPerUnit: 100,
+    servingGrams: null, packGrams: null,
     kcal: 0, protein: 0, fat: null, carb: null, sugar: null, fiber: null, sodium: null,
     price: null, source: 'manual', sourceNote: '', confidence: 'high',
     useCount: 0, lastUsedAt: '', imageUrl: '',

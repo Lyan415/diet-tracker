@@ -1,5 +1,5 @@
 import { state, rankedFoods, findFood, makeFood, saveFood, saveLog } from '../store.js';
-import { scaleFood } from '../nutrition.js';
+import { scaleFood, portionOptions, portionGrams, scaleByPortion } from '../nutrition.js';
 import { analyzeFood, SOURCE_LABEL } from '../gemini.js';
 import { compressImage, uploadPhoto } from '../gas.js';
 import { $, $$, esc, fmt, num, uid, todayStr, timeStr, nowStamp, toast, debounce } from '../util.js';
@@ -227,39 +227,60 @@ const unitText = (f) => f.baseUnit === 'gram'
 function openQty(foodId) {
   const f = state.foods.find(x => x.id === foodId);
   if (!f) return;
-  const canGram = !!num(f.gramsPerUnit, 0);
+  const opts = portionOptions(f);
+  const def = opts[0];
+  const defQty = def.needsInput ? '' : 1;
+
   $('#qtyBox').innerHTML = `<div class="card">
     <h2 class="card__title">${esc(f.name)}</h2>
     <div class="field--split">
-      <div class="field">
-        <label for="useQty">數量</label>
-        <input id="useQty" type="number" inputmode="decimal" value="1" min="0" step="0.1">
-      </div>
-      <div class="field">
-        <label for="useType">單位</label>
-        <select id="useType">
-          <option value="unit">${esc(unitText(f))}（幾份）</option>
-          ${canGram ? '<option value="gram">公克</option>' : ''}
-        </select>
-      </div>
+      <input id="useQty" type="number" inputmode="decimal" value="${defQty}" min="0" step="0.1"
+             aria-label="數量" placeholder="${def.needsInput ? '公克' : '數量'}">
+      <select id="usePortion" aria-label="份量單位">
+        ${opts.map(o => `<option value="${o.id}">${esc(o.label)}</option>`).join('')}
+      </select>
     </div>
+    <p class="small muted" id="usePreview" style="margin:8px 0 0"></p>
     <button class="btn btn--go btn--block" data-act="logFood" data-id="${esc(f.id)}" style="margin-top:12px">記錄</button>
   </div>`;
+
+  const preview = () => {
+    const grams = portionGrams(f, $('#usePortion').value, $('#useQty').value);
+    const s = grams === null ? null : scaleByPortion(f, $('#usePortion').value, $('#useQty').value);
+    $('#usePreview').textContent = grams === null
+      ? '請填入重量'
+      : `實際 ${fmt(grams, 1)} 克 → ${fmt(s?.kcal, 0)} kcal・蛋白 ${fmt(s?.protein, 1)} g`;
+  };
+  $('#useQty').addEventListener('input', preview);
+  $('#usePortion').addEventListener('change', () => {
+    const opt = opts.find(o => o.id === $('#usePortion').value);
+    $('#useQty').value = opt?.needsInput ? '' : 1;
+    $('#useQty').placeholder = opt?.needsInput ? '公克' : '數量';
+    preview();
+  });
+  preview();
+
   $('#qtyBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function logFrequent(foodId) {
   const f = state.foods.find(x => x.id === foodId);
   if (!f) return;
-  const qty = num($('#useQty')?.value, 1);
-  const qtyType = $('#useType')?.value || 'unit';
-  const scaled = scaleFood(f, qty, qtyType);
-  if (!scaled) { toast('這項食物沒有基準克數，無法用公克計算', 'error'); return; }
+  const portion = $('#usePortion')?.value;
+  const qty = $('#useQty')?.value;
+  const grams = portionGrams(f, portion, qty);
+  if (grams === null || !grams) { toast('請先填入重量或數量', 'error'); return; }
+  const scaled = scaleByPortion(f, portion, qty);
+  if (!scaled) { toast('這項食物缺少基準克數，無法換算', 'error'); return; }
 
+  const opt = portionOptions(f).find(o => o.id === portion);
   await withBusy(async () => {
     await saveLog(baseLog({
-      foodId: f.id, foodName: f.name, qty, qtyType,
-      grams: scaled.grams, entryMode: 'frequent', status: 'confirmed', ...pickNutrients(scaled)
+      foodId: f.id, foodName: f.name,
+      qty: grams, qtyType: 'gram', grams,
+      entryMode: 'frequent', status: 'confirmed',
+      note: opt && !opt.needsInput ? `${fmt(num(qty, 1), 1)} × ${opt.label}` : '',
+      ...pickNutrients(scaled)
     }));
   });
   toast(`已記錄 ${f.name}`, 'ok');
@@ -295,7 +316,9 @@ async function saveQuick() {
       const food = existing
         ? { ...existing, ...perServe, gramsPerUnit: grams ?? existing.gramsPerUnit }
         : makeFood({
-            name, baseUnit: 'serve', unitLabel: '每份', gramsPerUnit: grams,
+            name, baseUnit: 'serve',
+            unitLabel: grams ? `1 份（${grams} 克）` : '每份',
+            gramsPerUnit: grams, servingGrams: grams,
             ...perServe, source: 'manual', confidence: 'high',
             sourceNote: '手動輸入'
           });
@@ -383,14 +406,27 @@ async function runLookup() {
   });
 }
 
-function toCandidate(item, extra) {
+/** 把判讀結果攤成食物庫的形狀，好共用份量換算 */
+function candidateFood(item) {
   return {
-    key: uid('c'),
-    item,
-    qty: item.estimatedQty || 1,
-    qtyType: item.estimatedQtyType || 'unit',
-    ...extra
+    baseUnit: item.baseUnit,
+    gramsPerUnit: item.gramsPerUnit,
+    servingGrams: item.servingGrams,
+    packGrams: item.packGrams,
+    unitLabel: item.unitLabel
   };
+}
+
+function toCandidate(item, extra) {
+  // 預設份量的挑選順序：標示上的一份 → 整包 → 目測重量 → 留白要使用者填。
+  // 絕不預設成「1 × 每 100 克」，那正是先前記錄失真的原因。
+  let portion, qty;
+  if (item.servingGrams)        { portion = 'serving'; qty = 1; }
+  else if (item.packGrams)      { portion = 'pack';    qty = 1; }
+  else if (item.estimatedGrams) { portion = 'gram';    qty = item.estimatedGrams; }
+  else                          { portion = 'gram';    qty = null; }
+
+  return { key: uid('c'), item, portion, qty, ...extra };
 }
 
 // ============================================================
@@ -402,28 +438,39 @@ function renderReview() {
   if (!panel) return;
   if (!candidates.length) { panel.innerHTML = ''; return; }
 
+  const incomplete = candidates.filter(c => portionGrams(candidateFood(c.item), c.portion, c.qty) === null);
+
   panel.innerHTML = `<div class="card">
     <h2 class="card__title">確認判讀結果</h2>
     <p class="small muted" style="margin:0 0 12px">
       下面的數字還沒計入今日。核對無誤再收下，順手也會存進食物庫。
     </p>
     ${candidates.map((c, i) => candidateMarkup(c, i)).join('')}
+    ${incomplete.length ? `<p class="small" style="margin:12px 0 0;color:var(--ps-circle)">
+      有 ${incomplete.length} 筆還沒填實際重量，補上才能記錄。
+    </p>` : ''}
     <div class="row" style="margin-top:14px">
-      <button class="btn btn--ghost grow" data-act="commit" data-status="draft">先存待確認</button>
-      <button class="btn btn--go grow" data-act="commit" data-status="confirmed">確認記錄</button>
+      <button class="btn btn--ghost grow" data-act="commit" data-status="draft"
+              ${incomplete.length ? 'disabled' : ''}>先存待確認</button>
+      <button class="btn btn--go grow" data-act="commit" data-status="confirmed"
+              ${incomplete.length ? 'disabled' : ''}>確認記錄</button>
     </div>
   </div>`;
 
   panel.querySelectorAll('[data-qty]').forEach(inp => {
     inp.addEventListener('input', () => {
       const c = candidates[Number(inp.dataset.qty)];
-      if (c) c.qty = num(inp.value, 1);
+      if (c) { c.qty = inp.value === '' ? null : num(inp.value, null); renderReview(); }
     });
   });
-  panel.querySelectorAll('[data-qtytype]').forEach(sel => {
+  panel.querySelectorAll('[data-portion]').forEach(sel => {
     sel.addEventListener('change', () => {
-      const c = candidates[Number(sel.dataset.qtytype)];
-      if (c) c.qtyType = sel.value;
+      const c = candidates[Number(sel.dataset.portion)];
+      if (!c) return;
+      c.portion = sel.value;
+      // 換單位時數量要跟著換語意：選「自行輸入公克」就清空重填，其餘預設 1
+      c.qty = sel.value === 'gram' ? null : 1;
+      renderReview();
     });
   });
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -431,11 +478,18 @@ function renderReview() {
 
 function candidateMarkup(c, i) {
   const it = c.item;
+  const food = candidateFood(it);
+  const opts = portionOptions(food);
+  const grams = portionGrams(food, c.portion, c.qty);
+  const scaled = grams === null ? null : scaleByPortion(food, c.portion, c.qty);
+
   const per = it.baseUnit === 'gram' ? `每 ${fmt(it.gramsPerUnit)} 克` : (it.unitLabel || '每份');
   const nutri = NUTRIENTS
     .filter(n => it[n.key] !== null && it[n.key] !== undefined)
     .map(n => `${n.label} ${fmt(it[n.key], 1)}${n.unit}`)
     .join('・');
+
+  const missingPortion = !it.servingGrams && !it.packGrams && it.baseUnit === 'gram';
 
   return `<div style="padding:12px 0;border-bottom:1px solid var(--line)">
     <div class="row" style="align-items:flex-start">
@@ -445,17 +499,32 @@ function candidateMarkup(c, i) {
       </div>
       <button class="btn btn--ghost btn--sm" data-act="dropCand" data-idx="${i}" aria-label="移除">✕</button>
     </div>
+
     <div class="row row--wrap" style="margin-top:8px">
       <span class="tag tag--${it.confidence}">${esc(SOURCE_LABEL[it.source] || it.source)}・信心 ${confidenceText(it.confidence)}</span>
+      ${it.servingGrams ? `<span class="tag">標示一份 ${fmt(it.servingGrams)} 克</span>` : ''}
+      ${it.packGrams ? `<span class="tag">整包 ${fmt(it.packGrams)} 克</span>` : ''}
       ${it.sourceNote ? `<span class="small muted">${esc(it.sourceNote)}</span>` : ''}
     </div>
+
+    ${missingPortion ? `<p class="small" style="margin:8px 0 0;color:var(--ps-circle)">
+      這張標示沒讀到「每一份量幾公克」，所以無法自動換算份數。請直接填你實際吃的重量。
+    </p>` : ''}
+
     <div class="field--split" style="margin-top:10px">
-      <input type="number" inputmode="decimal" value="${fmt(c.qty, 1)}" min="0" step="0.1" data-qty="${i}" aria-label="數量">
-      <select data-qtytype="${i}" aria-label="單位">
-        <option value="unit" ${c.qtyType === 'unit' ? 'selected' : ''}>${esc(per)}（幾份）</option>
-        ${it.gramsPerUnit ? `<option value="gram" ${c.qtyType === 'gram' ? 'selected' : ''}>公克</option>` : ''}
+      <input type="number" inputmode="decimal" value="${c.qty === null ? '' : fmt(c.qty, 1)}"
+             min="0" step="0.1" data-qty="${i}" aria-label="數量"
+             placeholder="${c.portion === 'gram' ? '公克' : '數量'}">
+      <select data-portion="${i}" aria-label="份量單位">
+        ${opts.map(o => `<option value="${o.id}" ${c.portion === o.id ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
       </select>
     </div>
+
+    <p class="small muted" style="margin:6px 0 0">
+      ${grams === null
+        ? '請填入重量'
+        : `實際 ${fmt(grams, 1)} 克 → ${fmt(scaled?.kcal, 0)} kcal・蛋白 ${fmt(scaled?.protein, 1)} g`}
+    </p>
   </div>`;
 }
 
@@ -476,10 +545,14 @@ async function commitCandidates(status) {
             sugar: it.sugar ?? existing.sugar,
             fiber: it.fiber ?? existing.fiber,
             sodium: it.sodium ?? existing.sodium,
+            // 份量資訊只補不蓋：已建檔的值通常是使用者親手校正過的
+            servingGrams: existing.servingGrams ?? it.servingGrams,
+            packGrams: existing.packGrams ?? it.packGrams,
             sourceNote: it.sourceNote || existing.sourceNote }
         : makeFood({
             name: it.name, aliases: it.aliases, category: it.category,
             baseUnit: it.baseUnit, unitLabel: it.unitLabel, gramsPerUnit: it.gramsPerUnit,
+            servingGrams: it.servingGrams, packGrams: it.packGrams,
             kcal: it.kcal, protein: it.protein, fat: it.fat, carb: it.carb,
             sugar: it.sugar, fiber: it.fiber, sodium: it.sodium,
             source: it.source, sourceNote: it.sourceNote, confidence: it.confidence,
@@ -487,13 +560,15 @@ async function commitCandidates(status) {
           });
       const saved = await saveFood(food);
 
-      const scaled = scaleFood(saved, c.qty, c.qtyType) || {};
+      const grams = portionGrams(saved, c.portion, c.qty);
+      const scaled = scaleByPortion(saved, c.portion, c.qty) || {};
       await saveLog(baseLog({
-        foodId: saved.id, foodName: saved.name, qty: c.qty, qtyType: c.qtyType,
-        grams: scaled.grams ?? null,
+        foodId: saved.id, foodName: saved.name,
+        qty: grams, qtyType: 'gram', grams,       // 一律記實際克數，避免「一份」語意含糊
         photoUrls: c.photoUrls, photoFileIds: c.photoFileIds,
         entryMode: c.entryMode, status,
-        note: c.sources?.length ? `參考來源：${c.sources.join('、')}` : '',
+        note: [portionNote(saved, c), c.sources?.length ? `參考來源：${c.sources.join('、')}` : '']
+                .filter(Boolean).join('｜'),
         ...pickNutrients(scaled)
       }));
     }
@@ -504,6 +579,13 @@ async function commitCandidates(status) {
   renderReview();
   toast(status === 'draft' ? `${n} 筆已存進待確認` : `已記錄 ${n} 筆`, 'ok');
   if (status !== 'draft') go('today'); else refresh(true);
+}
+
+/** 把「怎麼算出這個克數」寫進備註，日後回頭看才知道是幾份 */
+function portionNote(food, c) {
+  const opt = portionOptions(food).find(o => o.id === c.portion);
+  if (!opt || opt.needsInput) return '';
+  return `${fmt(c.qty, 1)} × ${opt.label}`;
 }
 
 // ============================================================

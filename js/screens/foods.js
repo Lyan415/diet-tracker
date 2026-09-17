@@ -87,6 +87,7 @@ function rowMarkup(f) {
       <div class="food__name">${esc(f.name)}</div>
       <div class="food__meta">
         ${f.baseUnit === 'gram' ? `每 ${fmt(f.gramsPerUnit)} 克` : esc(f.unitLabel || '每份')}
+        ${f.servingGrams ? `・一份 ${fmt(f.servingGrams)} 克` : ''}
         ・${fmt(f.kcal)} kcal・蛋白 ${fmt(f.protein, 1)} g
         ${pd !== null ? `・密度 ${fmt(pd, 1)}` : ''}
         ${pp !== null ? `・蛋白 $${fmt(pp, 2)}/g` : ''}
@@ -202,6 +203,19 @@ function openEditor(id) {
           <input id="fGrams" type="number" inputmode="decimal" min="0" value="${f.gramsPerUnit ?? ''}">
         </div>
       </div>
+      <div class="field--split">
+        <div class="field">
+          <label for="fServing">一份幾克（標示的每一份量）</label>
+          <input id="fServing" type="number" inputmode="decimal" min="0" step="0.1" value="${f.servingGrams ?? ''}">
+        </div>
+        <div class="field">
+          <label for="fPack">整包幾克（淨重）</label>
+          <input id="fPack" type="number" inputmode="decimal" min="0" step="0.1" value="${f.packGrams ?? ''}">
+        </div>
+      </div>
+      <p class="small muted" style="margin:-4px 0 0">
+        這兩欄決定記錄時「一份」等於多少克。留空的話只能用公克記錄，不會被當成 100 克。
+      </p>
       <div class="field">
         <label for="fUnitLabel">單位說明（例：1 個、1 碗）</label>
         <input id="fUnitLabel" type="text" value="${esc(f.unitLabel || '')}">
@@ -257,6 +271,8 @@ async function persist() {
     aliases: $('#fAliases').value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
     baseUnit: $('#fBase').value,
     gramsPerUnit: num($('#fGrams').value, null),
+    servingGrams: num($('#fServing').value, null),
+    packGrams: num($('#fPack').value, null),
     unitLabel: $('#fUnitLabel').value.trim(),
     price: num($('#fPrice').value, null),
     category: $('#fCategory').value.trim(),

@@ -138,6 +138,61 @@ export function scaleFood(food, qty, qtyType) {
   return out;
 }
 
+/**
+ * 這項食物有哪些份量可以選。
+ *
+ * 會出現偏差的關鍵在這裡：包裝的營養標示多半寫「每 100 公克」，但使用者心裡的
+ * 「一份」是包裝上另一行的「每一份量 ○○ 公克」。兩者不是同一件事，只有把實際
+ * 克數問出來才能正確換算，所以每個選項都必須帶著明確的克數。
+ *
+ * @returns {Array<{id, label, grams:number|null, needsInput:boolean}>}
+ */
+export function portionOptions(food) {
+  const per = num(food.gramsPerUnit, 0);
+  const serving = num(food.servingGrams, 0);
+  const pack = num(food.packGrams, 0);
+  const opts = [];
+
+  if (food.baseUnit === 'serve') {
+    opts.push({
+      id: 'serve',
+      label: food.unitLabel || (per ? `1 份（${per} 克）` : '1 份'),
+      grams: per || null,
+      needsInput: false
+    });
+    if (pack && per && pack !== per) {
+      opts.push({ id: 'pack', label: `整包（${pack} 克）`, grams: pack, needsInput: false });
+    }
+    if (per) opts.push({ id: 'gram', label: '自行輸入公克', grams: null, needsInput: true });
+    return opts;
+  }
+
+  if (serving) opts.push({ id: 'serving', label: `1 份（${serving} 克）`, grams: serving, needsInput: false });
+  if (pack && pack !== serving) opts.push({ id: 'pack', label: `整包（${pack} 克）`, grams: pack, needsInput: false });
+  opts.push({ id: 'gram', label: '自行輸入公克', grams: null, needsInput: true });
+  opts.push({ id: 'per', label: `每 ${per || 100} 克`, grams: per || 100, needsInput: false });
+  return opts;
+}
+
+/** 選定的份量 × 數量 等於幾克。填空白或 0 一律回 null，讓上層擋下來 */
+export function portionGrams(food, optionId, qty) {
+  const opt = portionOptions(food).find(o => o.id === optionId);
+  if (!opt) return null;
+  if (qty === null || qty === undefined || qty === '') return null;
+  const q = num(qty, 0);
+  if (!(q > 0)) return null;
+  if (opt.needsInput) return round(q, 1);     // 直接輸入克數，數量就是克數
+  if (!opt.grams) return null;
+  return round(q * opt.grams, 1);
+}
+
+/** 依選定份量算出實際攝取的營養素 */
+export function scaleByPortion(food, optionId, qty) {
+  const grams = portionGrams(food, optionId, qty);
+  if (grams === null || !Number.isFinite(grams)) return null;
+  return scaleFood(food, grams, 'gram');
+}
+
 /** 每公克蛋白質多少錢，拿來比較食材的蛋白質性價比 */
 export function proteinPrice(food) {
   const price = num(food.price, 0);
