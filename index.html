@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>飲控</title>
+<meta name="description" content="以 Google 試算表為資料庫的個人飲食紀錄工具">
+<meta name="theme-color" content="#0F1118">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="飲控">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="statusbar" class="statusbar" hidden></div>
+
+<!-- 登入／首次設定 -->
+<div id="gate" class="gate" hidden></div>
+
+<!-- 主畫面 -->
+<div id="app" hidden>
+  <main class="shell">
+    <section id="screen-today"   class="screen is-active"></section>
+    <section id="screen-add"     class="screen"></section>
+    <section id="screen-foods"   class="screen"></section>
+    <section id="screen-stats"   class="screen"></section>
+    <section id="screen-profile" class="screen"></section>
+    <p class="version" id="versionTag"></p>
+  </main>
+
+  <nav class="tabbar">
+    <div class="tabbar__inner">
+      <button class="tabbar__btn is-active" data-tab="today">
+        <span class="tabbar__glyph">△</span><span>今日</span>
+      </button>
+      <button class="tabbar__btn" data-tab="add">
+        <span class="tabbar__glyph">＋</span><span>新增</span>
+      </button>
+      <button class="tabbar__btn" data-tab="foods">
+        <span class="tabbar__glyph">□</span><span>食物庫</span>
+      </button>
+      <button class="tabbar__btn" data-tab="stats">
+        <span class="tabbar__glyph">○</span><span>數據</span>
+      </button>
+      <button class="tabbar__btn" data-tab="profile">
+        <span class="tabbar__glyph">✕</span><span>我的</span>
+      </button>
+    </div>
+  </nav>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

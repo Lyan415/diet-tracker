@@ -1,0 +1,46 @@
+{
+  "note": "少量常吃食物的起始資料。數值為常見公開參考值，非逐項取自食藥署原始資料庫，因此一律標記 confidence=medium，請以實際包裝標示或食藥署「食品營養成分資料庫」校正。要匯入完整兩千筆請看 tools/convert-tfnd.md。",
+  "unit": "除標明每份者外，數值皆為每 100 公克",
+  "foods": [
+    { "name": "白飯", "category": "主食", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 130, "protein": 2.4, "fat": 0.3, "carb": 28.0, "fiber": 0.4, "sodium": 1 },
+    { "name": "糙米飯", "category": "主食", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 123, "protein": 2.7, "fat": 1.0, "carb": 25.6, "fiber": 1.6, "sodium": 4 },
+    { "name": "全麥吐司", "category": "主食", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 250, "protein": 9.0, "fat": 3.5, "carb": 46.0, "fiber": 6.0, "sodium": 450 },
+    { "name": "地瓜", "aliases": ["番薯"], "category": "主食", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 120, "protein": 1.3, "fat": 0.2, "carb": 28.0, "sugar": 9.0, "fiber": 2.4, "sodium": 40 },
+    { "name": "燕麥片", "category": "主食", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 389, "protein": 16.9, "fat": 6.9, "carb": 66.3, "fiber": 10.6, "sodium": 2 },
+    { "name": "義大利麵", "category": "主食", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 158, "protein": 5.8, "fat": 0.9, "carb": 31.0, "fiber": 1.8, "sodium": 1 },
+
+    { "name": "雞胸肉", "aliases": ["去皮雞胸", "舒肥雞胸"], "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 165, "protein": 31.0, "fat": 3.6, "carb": 0, "sodium": 74 },
+    { "name": "雞腿肉", "aliases": ["去皮雞腿"], "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 185, "protein": 25.0, "fat": 8.5, "carb": 0, "sodium": 86 },
+    { "name": "豬里肌", "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 190, "protein": 28.0, "fat": 8.0, "carb": 0, "sodium": 60 },
+    { "name": "牛腱", "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 200, "protein": 30.0, "fat": 8.0, "carb": 0, "sodium": 65 },
+    { "name": "鮭魚", "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 208, "protein": 22.0, "fat": 13.0, "carb": 0, "sodium": 59 },
+    { "name": "鯖魚", "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 262, "protein": 24.0, "fat": 18.0, "carb": 0, "sodium": 83 },
+    { "name": "蝦仁", "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 99, "protein": 24.0, "fat": 0.3, "carb": 0.2, "sodium": 111 },
+    { "name": "雞蛋", "aliases": ["全蛋"], "category": "蛋白質", "baseUnit": "serve", "unitLabel": "1 顆（約 50 克）", "gramsPerUnit": 50, "kcal": 72, "protein": 6.3, "fat": 4.8, "carb": 0.4, "sodium": 71 },
+    { "name": "蛋白", "category": "蛋白質", "baseUnit": "serve", "unitLabel": "1 顆份（約 33 克）", "gramsPerUnit": 33, "kcal": 17, "protein": 3.6, "fat": 0.1, "carb": 0.2, "sodium": 55 },
+    { "name": "茶葉蛋", "category": "蛋白質", "baseUnit": "serve", "unitLabel": "1 顆（約 55 克）", "gramsPerUnit": 55, "kcal": 70, "protein": 6.5, "fat": 4.5, "carb": 0.8, "sodium": 300 },
+    { "name": "板豆腐", "aliases": ["傳統豆腐"], "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 88, "protein": 8.5, "fat": 3.5, "carb": 4.0, "fiber": 0.6, "sodium": 2 },
+    { "name": "嫩豆腐", "category": "蛋白質", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 51, "protein": 4.9, "fat": 2.7, "carb": 2.0, "sodium": 5 },
+    { "name": "無糖豆漿", "category": "飲品", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 35, "protein": 3.6, "fat": 1.9, "carb": 1.5, "sugar": 0.5, "sodium": 5 },
+    { "name": "無糖希臘優格", "category": "乳品", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 59, "protein": 10.0, "fat": 0.4, "carb": 3.6, "sugar": 3.2, "sodium": 36 },
+    { "name": "低脂牛奶", "category": "乳品", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 42, "protein": 3.4, "fat": 1.0, "carb": 5.0, "sugar": 5.0, "sodium": 44 },
+    { "name": "全脂牛奶", "category": "乳品", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 63, "protein": 3.1, "fat": 3.5, "carb": 4.8, "sugar": 4.8, "sodium": 43 },
+
+    { "name": "花椰菜", "aliases": ["青花菜", "綠花椰"], "category": "蔬菜", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 35, "protein": 2.4, "fat": 0.4, "carb": 7.2, "fiber": 3.3, "sodium": 41 },
+    { "name": "高麗菜", "category": "蔬菜", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 25, "protein": 1.3, "fat": 0.1, "carb": 5.8, "fiber": 2.5, "sodium": 18 },
+    { "name": "菠菜", "category": "蔬菜", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 23, "protein": 2.9, "fat": 0.4, "carb": 3.6, "fiber": 2.2, "sodium": 79 },
+    { "name": "番茄", "aliases": ["牛番茄"], "category": "蔬菜", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 18, "protein": 0.9, "fat": 0.2, "carb": 3.9, "sugar": 2.6, "fiber": 1.2, "sodium": 5 },
+    { "name": "小黃瓜", "category": "蔬菜", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 15, "protein": 0.7, "fat": 0.1, "carb": 3.6, "fiber": 0.5, "sodium": 2 },
+    { "name": "杏鮑菇", "category": "蔬菜", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 41, "protein": 2.8, "fat": 0.2, "carb": 8.3, "fiber": 3.1, "sodium": 3 },
+
+    { "name": "香蕉", "category": "水果", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 89, "protein": 1.1, "fat": 0.3, "carb": 23.0, "sugar": 12.0, "fiber": 2.6, "sodium": 1 },
+    { "name": "蘋果", "category": "水果", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 52, "protein": 0.3, "fat": 0.2, "carb": 14.0, "sugar": 10.0, "fiber": 2.4, "sodium": 1 },
+    { "name": "芭樂", "category": "水果", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 38, "protein": 0.8, "fat": 0.1, "carb": 10.0, "sugar": 5.5, "fiber": 3.3, "sodium": 3 },
+    { "name": "酪梨", "category": "水果", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 160, "protein": 2.0, "fat": 15.0, "carb": 8.5, "sugar": 0.7, "fiber": 6.7, "sodium": 7 },
+
+    { "name": "杏仁果", "category": "堅果", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 579, "protein": 21.0, "fat": 50.0, "carb": 22.0, "sugar": 4.4, "fiber": 12.5, "sodium": 1 },
+    { "name": "橄欖油", "category": "油脂", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 884, "protein": 0, "fat": 100.0, "carb": 0, "sodium": 2 },
+    { "name": "黑咖啡", "category": "飲品", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 2, "protein": 0.1, "fat": 0, "carb": 0, "sodium": 2 },
+    { "name": "無糖茶", "category": "飲品", "baseUnit": "gram", "gramsPerUnit": 100, "kcal": 1, "protein": 0, "fat": 0, "carb": 0.2, "sodium": 1 }
+  ]
+}
