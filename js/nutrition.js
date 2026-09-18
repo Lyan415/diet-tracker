@@ -153,44 +153,54 @@ export function portionOptions(food) {
   const pack = num(food.packGrams, 0);
   const opts = [];
 
+  // kind = 'multiplier'：數量直接乘上食物庫的基準值（幾份、幾個 100 克）
+  // kind = 'grams'    ：先換算成公克再依基準值等比例計算
   if (food.baseUnit === 'serve') {
     opts.push({
-      id: 'serve',
+      id: 'serve', kind: 'multiplier',
       label: food.unitLabel || (per ? `1 份（${per} 克）` : '1 份'),
-      grams: per || null,
-      needsInput: false
+      grams: per || null
     });
     if (pack && per && pack !== per) {
-      opts.push({ id: 'pack', label: `整包（${pack} 克）`, grams: pack, needsInput: false });
+      opts.push({ id: 'pack', kind: 'grams', label: `整包（${pack} 克）`, grams: pack });
     }
-    if (per) opts.push({ id: 'gram', label: '自行輸入公克', grams: null, needsInput: true });
+    if (per) opts.push({ id: 'gram', kind: 'grams', label: '自行輸入公克', grams: null });
     return opts;
   }
 
-  if (serving) opts.push({ id: 'serving', label: `1 份（${serving} 克）`, grams: serving, needsInput: false });
-  if (pack && pack !== serving) opts.push({ id: 'pack', label: `整包（${pack} 克）`, grams: pack, needsInput: false });
-  opts.push({ id: 'gram', label: '自行輸入公克', grams: null, needsInput: true });
-  opts.push({ id: 'per', label: `每 ${per || 100} 克`, grams: per || 100, needsInput: false });
+  if (serving) opts.push({ id: 'serving', kind: 'grams', label: `1 份（${serving} 克）`, grams: serving });
+  if (pack && pack !== serving) opts.push({ id: 'pack', kind: 'grams', label: `整包（${pack} 克）`, grams: pack });
+  opts.push({ id: 'gram', kind: 'grams', label: '自行輸入公克', grams: null });
+  opts.push({ id: 'per', kind: 'multiplier', label: `每 ${per || 100} 克`, grams: per || 100 });
   return opts;
 }
 
-/** 選定的份量 × 數量 等於幾克。填空白或 0 一律回 null，讓上層擋下來 */
+/** 選定的份量 × 數量 等於幾克。算不出來（例如一份不知道幾克）回 null，不代表不能記錄 */
 export function portionGrams(food, optionId, qty) {
   const opt = portionOptions(food).find(o => o.id === optionId);
   if (!opt) return null;
   if (qty === null || qty === undefined || qty === '') return null;
   const q = num(qty, 0);
   if (!(q > 0)) return null;
-  if (opt.needsInput) return round(q, 1);     // 直接輸入克數，數量就是克數
-  if (!opt.grams) return null;
-  return round(q * opt.grams, 1);
+  if (opt.kind === 'multiplier') return opt.grams ? round(q * opt.grams, 1) : null;
+  return round(opt.grams ? q * opt.grams : q, 1);
 }
 
 /** 依選定份量算出實際攝取的營養素 */
 export function scaleByPortion(food, optionId, qty) {
-  const grams = portionGrams(food, optionId, qty);
-  if (grams === null || !Number.isFinite(grams)) return null;
-  return scaleFood(food, grams, 'gram');
+  const opt = portionOptions(food).find(o => o.id === optionId);
+  if (!opt) return null;
+  if (qty === null || qty === undefined || qty === '') return null;
+  const q = num(qty, 0);
+  if (!(q > 0)) return null;
+  // 「幾份」就算不知道一份幾克也照樣算得出來，直接乘基準值即可
+  if (opt.kind === 'multiplier') return scaleFood(food, q, 'unit');
+  return scaleFood(food, opt.grams ? q * opt.grams : q, 'gram');
+}
+
+/** 這個份量組合能不能記錄。用它做審核面板的驗證，不要用 portionGrams 是否為 null */
+export function portionReady(food, optionId, qty) {
+  return scaleByPortion(food, optionId, qty) !== null;
 }
 
 /** 每公克蛋白質多少錢，拿來比較食材的蛋白質性價比 */

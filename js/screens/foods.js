@@ -20,7 +20,6 @@ const SORTS = [
 
 export function renderFoods() {
   const root = $('#screen-foods');
-  const list = sorted(filtered());
 
   root.innerHTML = `
     <div class="screen__head">
@@ -41,7 +40,7 @@ export function renderFoods() {
       <div class="sortbar">
         ${SORTS.map(s => `<button class="chip ${s.id === sortKey ? 'is-active' : ''}" data-sort="${s.id}">${esc(s.label)}</button>`).join('')}
       </div>
-      ${list.length ? list.map(rowMarkup).join('') : '<p class="empty">還沒有任何食物。記一筆或按右上角新增。</p>'}
+      <div id="foodListBox">${listMarkup()}</div>
     </div>
 
     <div id="foodEditor"></div>
@@ -49,6 +48,13 @@ export function renderFoods() {
 
   if (editingId) openEditor(editingId);
   wire(root);
+}
+
+function listMarkup() {
+  const list = sorted(filtered());
+  return list.length
+    ? list.map(rowMarkup).join('')
+    : '<p class="empty">還沒有任何食物。記一筆或按右上角新增。</p>';
 }
 
 function filtered() {
@@ -122,17 +128,29 @@ function wire(root) {
     }
   };
 
-  const filter = $('#foodFilter');
-  if (filter) {
-    filter.addEventListener('input', debounce(() => {
-      query = filter.value;
-      const pos = filter.selectionStart;
-      renderFoods();
-      const again = $('#foodFilter');
-      again?.focus();
-      again?.setSelectionRange(pos, pos);
-    }, 200));
-  }
+  wireFilterBox();
+}
+
+/**
+ * 中文輸入法在組字期間會連續送出 input 事件。
+ * 之前每次都整頁重繪，輸入框被重建，注音還沒選字就被打斷，
+ * 看起來就像「只打得了一個字」。改成組字中不動、且只換清單容器。
+ */
+function wireFilterBox() {
+  const box = $('#foodFilter');
+  if (!box) return;
+  let composing = false;
+
+  const apply = () => {
+    query = box.value;
+    const listBox = $('#foodListBox');
+    if (listBox) listBox.innerHTML = listMarkup();
+  };
+  const applySoon = debounce(apply, 200);
+
+  box.addEventListener('compositionstart', () => { composing = true; });
+  box.addEventListener('compositionend', () => { composing = false; apply(); });
+  box.addEventListener('input', () => { if (!composing) applySoon(); });
 }
 
 // ============================================================
