@@ -184,6 +184,42 @@ export function setSyncMode(mode) {
   if (getSyncMode() === 'auto') scheduleFlush(0);
 }
 
+// ---------- 照片保留設定 ----------
+
+/**
+ * 預設不保留照片。上傳一張壓縮後的照片要獨立打一趟 Apps Script（1~3 秒），
+ * 而照片對記帳本身沒有作用 —— 營養素判讀完就已經存進紀錄了。
+ */
+export const getKeepPhotos = () => localStorage.getItem(STORAGE.keepPhotos) === '1';
+
+export function setKeepPhotos(on) {
+  if (on) localStorage.setItem(STORAGE.keepPhotos, '1');
+  else localStorage.removeItem(STORAGE.keepPhotos);
+  emit('sync');
+}
+
+/** 已經存在 Drive 的照片，回傳所有 fileId */
+export function allPhotoFileIds() {
+  const ids = [];
+  state.logs.forEach(l => (l.photoFileIds || []).forEach(id => { if (id) ids.push(id); }));
+  return ids;
+}
+
+/** 把所有紀錄的照片丟進 Drive 垃圾桶並清掉連結，營養素數據不動 */
+export async function purgePhotos() {
+  const ids = allPhotoFileIds();
+  const touched = state.logs.filter(l => (l.photoUrls || []).length || (l.photoFileIds || []).length);
+  if (!touched.length) return { logs: 0, photos: 0 };
+
+  touched.forEach(l => { l.photoUrls = []; l.photoFileIds = []; l.updatedAt = nowStamp(); });
+  saveLocal();
+  emit('data');
+
+  if (ids.length) enqueue('deletePhotos', { fileIds: ids });
+  touched.forEach(l => enqueue('upsertLog', { log: serialize(l) }));
+  return { logs: touched.length, photos: ids.length };
+}
+
 // ---------- 寫入：本機先落地，上傳丟背景 ----------
 
 /**

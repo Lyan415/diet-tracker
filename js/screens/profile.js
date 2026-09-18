@@ -1,6 +1,7 @@
 import { state, getMeta, setMeta, saveBody, deleteBody, bodyHistory, latestBody,
          syncFromCloud, flushOutbox, outboxSize, outboxLastError, clearOutbox,
-         getSyncMode, setSyncMode } from '../store.js';
+         getSyncMode, setSyncMode, getKeepPhotos, setKeepPhotos,
+         allPhotoFileIds, purgePhotos } from '../store.js';
 import { suggestedTargets, effectiveTargets, leanMass, ageFrom } from '../nutrition.js';
 import { ACTIVITY_LEVELS, APP_VERSION, DEFAULT_GEMINI_MODEL } from '../config.js';
 import { getCredentials, setCredentials, ping, validGasUrl } from '../gas.js';
@@ -29,6 +30,7 @@ export function renderProfile() {
     ${targetCard(suggest, current)}
     ${historyCard()}
     ${syncCard()}
+    ${photoCard()}
     ${lockCard()}
     ${connCard()}
     <p class="version">前端版本 ${esc(APP_VERSION)}</p>
@@ -233,6 +235,38 @@ function syncCard() {
   </div>`;
 }
 
+// ---------- 照片 ----------
+
+function photoCard() {
+  const keep = getKeepPhotos();
+  const stored = allPhotoFileIds().length;
+  return `<div class="card">
+    <h2 class="card__title">
+      照片
+      ${stored ? `<span class="tag">Drive 裡有 ${stored} 張</span>` : ''}
+    </h2>
+    <div class="stack">
+      <label class="lockopt">
+        <input type="checkbox" id="keepPhotos" ${keep ? 'checked' : ''}>
+        <span>
+          <strong>判讀後保留照片</strong>
+          <span class="small muted">
+            開啟才會上傳到你的 Google Drive，而且是在你按下確認之後才傳。
+            關閉的話照片只用來判讀，判讀完就丟掉，不佔上傳時間。
+          </span>
+        </span>
+      </label>
+      ${stored ? `
+        <button class="btn btn--danger btn--block" data-act="purgePhotos">
+          清除已存的 ${stored} 張照片
+        </button>
+        <p class="small muted" style="margin:0">
+          會把照片移到 Drive 垃圾桶並清掉紀錄上的連結，營養素數據完全不動。
+        </p>` : ''}
+    </div>
+  </div>`;
+}
+
 // ---------- 登入鎖 ----------
 
 function lockCard() {
@@ -325,6 +359,12 @@ function wire(root) {
       await changeLockMode(e.target.value);
       return;
     }
+    if (e.target.id === 'keepPhotos') {
+      setKeepPhotos(e.target.checked);
+      toast(e.target.checked ? '之後會保留照片' : '之後不保留照片', 'ok');
+      renderProfile();
+      return;
+    }
   };
 
   root.onclick = async (e) => {
@@ -402,6 +442,18 @@ function wire(root) {
         finally { hideWorking(); }
         renderProfile();
       }
+      if (act === 'purgePhotos') {
+        const n = allPhotoFileIds().length;
+        if (await confirmBox(`要清除 ${n} 張照片嗎？照片會移到 Drive 垃圾桶，營養素數據不受影響。`, '清除')) {
+          showWorking('清除照片…');
+          try {
+            const r = await purgePhotos();
+            toast(`已清除 ${r.photos} 張照片，更新 ${r.logs} 筆紀錄`, 'ok');
+          } finally { hideWorking(); }
+          renderProfile();
+        }
+      }
+
       if (act === 'clearBox') {
         if (await confirmBox('要清空待送佇列嗎？這些變更就不會再上傳，但本機和雲端已有的資料不受影響。', '清空')) {
           clearOutbox();

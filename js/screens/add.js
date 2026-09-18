@@ -1,4 +1,4 @@
-import { state, rankedFoods, findFood, makeFood, saveFood, saveLog } from '../store.js';
+import { state, rankedFoods, findFood, makeFood, saveFood, saveLog, getKeepPhotos } from '../store.js';
 import { portionOptions, portionGrams, scaleByPortion, portionReady } from '../nutrition.js';
 import { extractFromPhotos, lookupNutrition, SOURCE_LABEL } from '../gemini.js';
 import { compressImage, uploadPhoto } from '../gas.js';
@@ -168,7 +168,10 @@ function photoPanel() {
             style="margin-top:10px">判讀${shots.length ? `（${shots.length} 張）` : ''}</button>
     <p class="small muted" style="margin:12px 0 0">
       同一樣食物的品名照與營養標示照請一起選，會合併成一筆。判讀順序是：先比對食物庫 →
-      再讀營養標示 → 都沒有才上網查。照片會壓縮後存進你自己的 Google Drive。
+      再讀營養標示 → 都沒有才上網查。<br>
+      ${getKeepPhotos()
+        ? '照片會在你按下確認之後才壓縮上傳到自己的 Google Drive。'
+        : '照片只用來判讀，判讀完就丟掉，不會上傳也不佔時間。要保留可到「我的 → 照片」開啟。'}
     </p>
   </div>`;
 }
@@ -398,13 +401,9 @@ async function runAnalyze() {
     });
     if (!extracted.length) throw new Error('照片裡沒有判讀出食物，請補上食物名稱再試');
 
-    // 照片先上傳，拿到 Drive 連結
-    const uploaded = [];
-    for (let i = 0; i < shots.length; i++) {
-      updateWorking(`上傳照片 ${i + 1} / ${shots.length}…`);
-      try { uploaded.push(await uploadPhoto(shots[i].base64, shots[i].mimeType)); }
-      catch { toast('照片上傳失敗，數值仍會保留', 'error'); }
-    }
+    // 照片先不上傳。判讀完不一定會收下這筆，先傳就是白等；
+    // 真的要保留的話會在按下確認之後才傳（見 commitCandidates）。
+    const pending = shots.map(s => ({ base64: s.base64, mimeType: s.mimeType }));
 
     const built = [];
     for (let i = 0; i < extracted.length; i++) {
@@ -413,8 +412,8 @@ async function runAnalyze() {
     }
 
     candidates = built.map(b => toCandidate(b.item, {
-      photoUrls: uploaded.map(u => u.url),
-      photoFileIds: uploaded.map(u => u.fileId),
+      shots: pending,          // 尚未上傳的原始影像，只存在記憶體
+      photoUrls: [], photoFileIds: [],
       entryMode: 'photo',
       sources: b.sources,
       route: b.route
@@ -662,6 +661,23 @@ async function commitCandidates(status) {
   if (!candidates.length) return;
   await withBusy(async () => {
     showWorking('寫入紀錄…');
+
+    // 只有開了「保留照片」才上傳，而且是在使用者確認之後才做
+    if (getKeepPhotos()) {
+      const withShots = candidates.filter(c => c.shots?.length);
+      for (const c of withShots) {
+        for (let i = 0; i < c.shots.length; i++) {
+          updateWorking(`上傳照片 ${i + 1} / ${c.shots.length}…`);
+          try {
+            const r = await uploadPhoto(c.shots[i].base64, c.shots[i].mimeType);
+            c.photoUrls.push(r.url);
+            c.photoFileIds.push(r.fileId);
+          } catch { toast('照片上傳失敗，數值仍會保留', 'error'); }
+        }
+      }
+      showWorking('寫入紀錄…');
+    }
+
     for (const c of candidates) {
       const it = c.item;
       const existing = it.existingId

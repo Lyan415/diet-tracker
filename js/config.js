@@ -1,5 +1,5 @@
 // 改版時只要動這一行，畫面右下角的版本標記就會跟著變，方便確認手機拿到的是不是新版
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 
 export const TZ = 'Asia/Taipei';
 
@@ -32,6 +32,7 @@ export const STORAGE = {
   cache:    'dt.cache',      // 雲端資料的本機快取
   outbox:   'dt.outbox',     // 還沒上傳的逐列寫入
   syncMode: 'dt.syncMode',   // auto（背景上傳）| manual（按鈕才上傳）
+  keepPhotos: 'dt.keepPhotos', // '1' 判讀後把照片存進 Drive；預設不存
   prefs:    'dt.prefs'       // 不敏感的本機偏好（最後選的分頁等）
 };
 
