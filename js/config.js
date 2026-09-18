@@ -1,5 +1,5 @@
 // 改版時只要動這一行，畫面右下角的版本標記就會跟著變，方便確認手機拿到的是不是新版
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export const TZ = 'Asia/Taipei';
 
@@ -25,12 +25,18 @@ export const LOCK_WIPE_AT = 10;
 export const PBKDF2_ITERATIONS = 250000;
 
 export const STORAGE = {
-  vault:    'dt.vault',      // 加密後的 { gasUrl, token, geminiKey }
+  vault:    'dt.vault',      // 上鎖模式：加密後的 { gasUrl, token, geminiKey }
+  plain:    'dt.creds',      // 不上鎖模式：同樣內容，明文
+  lockMode: 'dt.lockMode',   // none | pattern | symbol
   lock:     'dt.lock',       // { fails, until }
   cache:    'dt.cache',      // 雲端資料的本機快取
-  outbox:   'dt.outbox',     // 上傳失敗待重送的逐列寫入
+  outbox:   'dt.outbox',     // 還沒上傳的逐列寫入
+  syncMode: 'dt.syncMode',   // auto（背景上傳）| manual（按鈕才上傳）
   prefs:    'dt.prefs'       // 不敏感的本機偏好（最後選的分頁等）
 };
+
+// 連連看圖形鎖：3×3 點陣，至少要連幾個點
+export const PATTERN_MIN = 4;
 
 export const GAS_URL_RE = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
 

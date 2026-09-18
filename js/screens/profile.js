@@ -1,9 +1,11 @@
 import { state, getMeta, setMeta, saveBody, deleteBody, bodyHistory, latestBody,
-         syncFromCloud, flushOutbox, outboxSize, outboxLastError, clearOutbox } from '../store.js';
+         syncFromCloud, flushOutbox, outboxSize, outboxLastError, clearOutbox,
+         getSyncMode, setSyncMode } from '../store.js';
 import { suggestedTargets, effectiveTargets, leanMass, ageFrom } from '../nutrition.js';
 import { ACTIVITY_LEVELS, APP_VERSION, DEFAULT_GEMINI_MODEL } from '../config.js';
 import { getCredentials, setCredentials, ping, validGasUrl } from '../gas.js';
-import { openVault, sealVault } from '../vault.js';
+import { LOCK_MODES, getLockMode, needsCode, saveCreds, loadCreds } from '../vault.js';
+import { promptCode } from './gate.js';
 import { $, esc, fmt, num, todayStr, toast, confirmBox, round,
          showWorking, hideWorking } from '../util.js';
 
@@ -26,6 +28,8 @@ export function renderProfile() {
     ${bodyCard(latest)}
     ${targetCard(suggest, current)}
     ${historyCard()}
+    ${syncCard()}
+    ${lockCard()}
     ${connCard()}
     <p class="version">前端版本 ${esc(APP_VERSION)}</p>
   `;
@@ -195,6 +199,66 @@ function historyCard() {
   </div>`;
 }
 
+// ---------- 同步模式 ----------
+
+function syncCard() {
+  const mode = getSyncMode();
+  const pending = outboxSize();
+  return `<div class="card">
+    <h2 class="card__title">
+      上傳方式
+      ${pending ? `<span class="tag tag--low">${pending} 筆待上傳</span>` : '<span class="tag tag--high">都已上傳</span>'}
+    </h2>
+    <div class="stack">
+      <label class="lockopt">
+        <input type="radio" name="syncmode" value="auto" ${mode === 'auto' ? 'checked' : ''}>
+        <span>
+          <strong>背景自動上傳</strong>
+          <span class="small muted">操作完立刻回到畫面，上傳在背景合併成一次請求送出。不用等。</span>
+        </span>
+      </label>
+      <label class="lockopt">
+        <input type="radio" name="syncmode" value="manual" ${mode === 'manual' ? 'checked' : ''}>
+        <span>
+          <strong>手動上傳</strong>
+          <span class="small muted">全部先存在手機，要按下面的按鈕才上傳。</span>
+        </span>
+      </label>
+      ${mode === 'manual' ? `<p class="small" style="margin:0;color:var(--ps-circle)">
+        未上傳的資料只存在這支手機的瀏覽器裡。清除瀏覽資料、換手機、或系統回收儲存空間都會一併消失，
+        而 Google 試算表是唯一的備份。建議記完一批就上傳。
+      </p>` : ''}
+      ${pending ? `<button class="btn btn--go btn--block" data-act="flush">立刻上傳 ${pending} 筆</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// ---------- 登入鎖 ----------
+
+function lockCard() {
+  const mode = getLockMode();
+  return `<div class="card">
+    <h2 class="card__title">登入鎖</h2>
+    <div class="stack">
+      <p class="small muted" style="margin:0">
+        擋住看到 GitHub 專案的陌生人，靠的是 token 不寫在程式碼裡，這一層永遠有效。
+        登入鎖只多防一種情況：別人拿到你已設定好的手機。
+      </p>
+      ${LOCK_MODES.map(m => `
+        <label class="lockopt">
+          <input type="radio" name="newlock" value="${m.id}" ${mode === m.id ? 'checked' : ''}>
+          <span>
+            <strong>${esc(m.label)}</strong>
+            <span class="small muted">${esc(m.hint)}</span>
+          </span>
+        </label>`).join('')}
+      ${mode === 'none' ? `<p class="small muted" style="margin:0">
+        目前不上鎖，token 以明文存在這台裝置。
+      </p>` : ''}
+    </div>
+  </div>`;
+}
+
 // ---------- 連線 ----------
 
 function connCard() {
@@ -247,6 +311,22 @@ function connCard() {
 // ============================================================
 
 function wire(root) {
+  root.onchange = async (e) => {
+    if (e.target.name === 'syncmode') {
+      setSyncMode(e.target.value);
+      if (e.target.value === 'auto' && outboxSize()) {
+        showWorking('上傳待送資料…');
+        try { await flushOutbox(); } finally { hideWorking(); }
+      }
+      renderProfile();
+      return;
+    }
+    if (e.target.name === 'newlock') {
+      await changeLockMode(e.target.value);
+      return;
+    }
+  };
+
   root.onclick = async (e) => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
@@ -364,7 +444,7 @@ async function offerNewTargets(before) {
   }
 }
 
-/** 改連線設定要重新加密，所以得再輸入一次符號密碼 */
+/** 改連線設定要重新保存，上鎖模式下得先驗證目前的鎖 */
 async function saveConnection() {
   const payload = {
     gasUrl: $('#cUrl').value.trim(),
@@ -374,55 +454,53 @@ async function saveConnection() {
   };
   if (!validGasUrl(payload.gasUrl)) { toast('網址格式不對', 'error'); return; }
 
-  const pass = await askPasscode();
-  if (!pass) return;
-
-  try {
-    await openVault(pass);            // 先驗證密碼正確
-  } catch {
-    toast('密碼不對，設定未變更', 'error');
-    return;
+  const mode = getLockMode();
+  let code = '';
+  if (needsCode(mode)) {
+    code = await promptCode('先確認目前的鎖，才能儲存設定', mode);
+    if (code === null) return;
+    try { await loadCreds(code); }
+    catch { toast('不對，設定未變更', 'error'); return; }
   }
-  await sealVault(pass, payload);
+
+  await saveCreds(mode, code, payload);
   setCredentials(payload);
   toast('設定已更新', 'ok');
   renderProfile();
 }
 
-function askPasscode() {
-  return new Promise(resolve => {
-    import('../config.js').then(({ SYMBOLS, PASSCODE_MAX }) => {
-      let code = [];
-      const wrap = document.createElement('div');
-      wrap.className = 'modal';
-      wrap.innerHTML = `
-        <div class="modal__panel" style="text-align:center">
-          <p class="modal__text">輸入符號密碼以儲存設定</p>
-          <div class="gate__dots" id="pcDots"></div>
-          <div class="pad">
-            ${SYMBOLS.map(s => `<button class="pad__key" data-sym="${s.id}" style="--key-color:${s.color}">${s.glyph}</button>`).join('')}
-          </div>
-          <div class="modal__actions">
-            <button class="btn btn--ghost" data-act="cancel">取消</button>
-            <button class="btn btn--ghost" data-act="back">刪除</button>
-            <button class="btn btn--go" data-act="ok">確定</button>
-          </div>
-        </div>`;
-      const draw = () => {
-        wrap.querySelector('#pcDots').innerHTML =
-          code.map(() => '<span class="gate__dot is-filled"></span>').join('')
-          || '<span class="gate__dot"></span>';
-      };
-      wrap.addEventListener('click', (e) => {
-        const sym = e.target.closest('[data-sym]');
-        if (sym) { if (code.length < PASSCODE_MAX) code.push(sym.dataset.sym); draw(); return; }
-        const act = e.target.closest('[data-act]')?.dataset.act;
-        if (act === 'back') { code.pop(); draw(); return; }
-        if (act === 'cancel') { wrap.remove(); resolve(null); }
-        if (act === 'ok') { wrap.remove(); resolve(code.join('')); }
-      });
-      document.body.appendChild(wrap);
-      draw();
-    });
-  });
+/** 切換登入鎖。先驗證舊的，再兩次確認新的，全程不動到連線設定的內容 */
+async function changeLockMode(next) {
+  const current = getLockMode();
+  if (next === current) return;
+
+  try {
+    // 先把現有設定取出來，之後要用新的鎖重新保存
+    let creds;
+    if (needsCode(current)) {
+      const oldCode = await promptCode('先確認目前的鎖', current);
+      if (oldCode === null) { renderProfile(); return; }
+      try { creds = await loadCreds(oldCode); }
+      catch { toast('不對，登入鎖未變更', 'error'); renderProfile(); return; }
+    } else {
+      creds = await loadCreds();
+    }
+
+    let newCode = '';
+    if (needsCode(next)) {
+      const first = await promptCode(next === 'pattern' ? '畫出新的圖形' : '按出新的符號密碼', next);
+      if (first === null) { renderProfile(); return; }
+      const again = await promptCode('再做一次相同的動作確認', next);
+      if (again === null) { renderProfile(); return; }
+      if (first !== again) { toast('兩次不一樣，登入鎖未變更', 'error'); renderProfile(); return; }
+      newCode = first;
+    }
+
+    await saveCreds(next, newCode, creds);
+    setCredentials(creds);
+    toast(next === 'none' ? '已改為不上鎖' : '登入鎖已更新', 'ok');
+  } catch (err) {
+    toast(err.message || '變更失敗', 'error');
+  }
+  renderProfile();
 }

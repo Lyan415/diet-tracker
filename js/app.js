@@ -1,5 +1,6 @@
 import { APP_VERSION, STORAGE } from './config.js';
-import { loadLocal, syncFromCloud, subscribe, state, outboxSize, flushOutbox } from './store.js';
+import { loadLocal, syncFromCloud, subscribe, state, outboxSize, flushOutbox,
+         getSyncMode, isPushing } from './store.js';
 import { mountGate } from './screens/gate.js';
 import { renderToday } from './screens/today.js';
 import { renderAdd } from './screens/add.js';
@@ -44,12 +45,22 @@ export function refresh(force = false) {
 function updateStatusBar() {
   const bar = $('#statusbar');
   const pending = outboxSize();
+  const manual = getSyncMode() === 'manual';
+  bar.classList.remove('statusbar--info');
+
   if (!navigator.onLine) {
     bar.hidden = false;
     bar.textContent = '離線中，紀錄會先存在本機，恢復連線後補送';
+  } else if (isPushing()) {
+    bar.hidden = false;
+    bar.classList.add('statusbar--info');
+    bar.textContent = '上傳中…';
   } else if (pending) {
     bar.hidden = false;
-    bar.textContent = `${pending} 筆變更還沒上傳，點這裡重送`;
+    if (!manual) bar.classList.add('statusbar--info');
+    bar.textContent = manual
+      ? `${pending} 筆只存在手機，點這裡上傳`
+      : `${pending} 筆待上傳，點這裡立刻送`;
   } else {
     bar.hidden = true;
   }

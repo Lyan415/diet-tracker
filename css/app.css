@@ -60,6 +60,13 @@ body.has-status { padding-top: 34px; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
 
+/* iOS Safari 的連點兩下放大會讓密碼鍵盤按快一點就縮放畫面。
+   touch-action: manipulation 停用雙擊縮放，但保留捲動與雙指縮放。 */
+button, .pad__key, .tabbar__btn, .mode, .chip, .food, .shot__x {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 :focus-visible {
   outline: 2px solid var(--ps-cross);
   outline-offset: 2px;
@@ -348,6 +355,63 @@ textarea { resize: vertical; min-height: 68px; }
 
 .gate__error { color: var(--ps-circle); font-size: 0.86rem; min-height: 1.4em; margin: 0 0 12px; }
 
+/* ---------- 連連看圖形鎖 ---------- */
+
+.pattern {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  width: min(272px, 74vw);
+  aspect-ratio: 1;
+  margin: 0 auto 18px;
+  touch-action: none;          /* 拖曳時不要捲動畫面 */
+  user-select: none;
+}
+
+.pattern__trace {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.pattern__dot {
+  display: grid;
+  place-items: center;
+}
+
+.pattern__dot span {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 2px solid var(--line);
+  transition: transform .12s ease, background-color .12s ease;
+}
+
+.pattern__dot.is-on span {
+  background: var(--ps-triangle);
+  border-color: var(--ps-triangle);
+  transform: scale(1.35);
+}
+
+/* ---------- 選項列（登入鎖、上傳方式） ---------- */
+
+.lockopt {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.lockopt:has(input:checked) { border-color: var(--ps-triangle); background: var(--surface-2); }
+.lockopt input { width: auto; margin-top: 3px; flex: none; }
+.lockopt > span { display: grid; gap: 2px; }
+
 /* ---------- 食物庫 ---------- */
 
 .food {
@@ -533,6 +597,9 @@ textarea { resize: vertical; min-height: 68px; }
   z-index: 50;
 }
 .statusbar[hidden] { display: none; }
+
+/* 背景自動上傳只是暫時狀態，不用紅色警示 */
+.statusbar--info { background: var(--ps-cross); color: #061024; }
 
 .version {
   text-align: center;

@@ -18,7 +18,7 @@
 // ============================================================
 
 const API_TOKEN = 'CHANGE-ME-TO-A-LONG-RANDOM-STRING';   // ← 一定要改
-const SCRIPT_VERSION = 'diet-1.1.0';
+const SCRIPT_VERSION = 'diet-1.2.0';
 const TIMEZONE = 'Asia/Taipei';
 const PHOTO_FOLDER_NAME = '飲控App照片';
 
@@ -74,6 +74,7 @@ function doPost(e) {
     if (body.token !== API_TOKEN) return json({ success: false, error: 'BAD_TOKEN' });
 
     switch (body.action) {
+      case 'batch':        return runBatch(body.ops);
       case 'upsertFood':   return upsertRow('Foods', body.food);
       case 'upsertFoods':  return upsertMany('Foods', body.foods);
       case 'deleteFoods':  return deleteRowsByIds('Foods', body.ids);
@@ -89,6 +90,44 @@ function doPost(e) {
     }
   } catch (err) {
     return json({ success: false, error: String(err && err.message || err) });
+  }
+}
+
+/**
+ * 一次請求處理整批寫入。每一筆仍然是逐列 upsert / delete，
+ * 不是整表覆寫，所以沒被提到的列完全不受影響。
+ *
+ * 會逐筆回報成敗，用戶端只把失敗的留在佇列裡，成功的不會重送造成重複。
+ */
+function runBatch(ops) {
+  const list = ops || [];
+  const results = [];
+  for (let i = 0; i < list.length; i++) {
+    const op = list[i] || {};
+    try {
+      applyWrite(op.action, op.body || {});
+      results.push({ ok: true });
+    } catch (err) {
+      results.push({ ok: false, error: String(err && err.message || err) });
+    }
+  }
+  const failed = results.filter(function (r) { return !r.ok; }).length;
+  return json({ success: failed === 0, count: results.length, failed: failed, results: results });
+}
+
+/** 單一寫入動作的實作。doPost 和 runBatch 共用，避免兩邊行為不一致。 */
+function applyWrite(action, body) {
+  switch (action) {
+    case 'upsertFood':   upsertRow('Foods', body.food);        return;
+    case 'upsertFoods':  upsertMany('Foods', body.foods);      return;
+    case 'deleteFoods':  deleteRowsByIds('Foods', body.ids);   return;
+    case 'upsertLog':    upsertRow('Logs', body.log);          return;
+    case 'deleteLogs':   deleteRowsByIds('Logs', body.ids);    return;
+    case 'upsertBody':   upsertRow('Body', body.record);       return;
+    case 'deleteBody':   deleteRowsByIds('Body', body.ids);    return;
+    case 'setMeta':      setMeta(body.entries);                return;
+    case 'deletePhotos': deletePhotos(body.fileIds);           return;
+    default: throw new Error('Unknown action: ' + action);
   }
 }
 

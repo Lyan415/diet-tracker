@@ -118,6 +118,10 @@ export async function syncFromCloud({ silent = false } = {}) {
   state.lastError = null;
   emit('sync');
   try {
+    // 順序很重要：先把本機還沒上傳的送出去，再拉雲端。
+    // 反過來的話，雲端整包取代會讓還沒上傳的那幾筆從畫面上消失。
+    if (readOutbox().length) await flushOutbox();
+
     const result = await gasGet('loadAll');
     if (!result || !result.success) throw new Error(result?.error || '讀取失敗');
 
@@ -130,7 +134,6 @@ export async function syncFromCloud({ silent = false } = {}) {
     state.lastSyncAt = nowStamp();
     saveLocal();
     emit('data');
-    await flushOutbox();
     return true;
   } catch (err) {
     state.lastError = err.message;
@@ -150,15 +153,16 @@ function readOutbox() {
   try { return JSON.parse(localStorage.getItem(STORAGE.outbox)) || []; } catch { return []; }
 }
 function writeOutbox(items) {
-  localStorage.setItem(STORAGE.outbox, JSON.stringify(items.slice(-200)));
+  localStorage.setItem(STORAGE.outbox, JSON.stringify(items.slice(-500)));
 }
 export const outboxSize = () => readOutbox().length;
 
 /** 待送佇列裡最後一筆的失敗原因，排查用 */
 export function outboxLastError() {
   const box = readOutbox();
-  if (!box.length) return null;
-  const last = box[box.length - 1];
+  const failed = box.filter(j => j.error);
+  if (!failed.length) return null;
+  const last = failed[failed.length - 1];
   return { action: last.action, at: last.at, error: last.error };
 }
 
@@ -168,37 +172,100 @@ export function clearOutbox() {
   emit('sync');
 }
 
+// ---------- 同步模式 ----------
+
+export function getSyncMode() {
+  return localStorage.getItem(STORAGE.syncMode) || 'auto';
+}
+
+export function setSyncMode(mode) {
+  localStorage.setItem(STORAGE.syncMode, mode === 'manual' ? 'manual' : 'auto');
+  emit('sync');
+  if (getSyncMode() === 'auto') scheduleFlush(0);
+}
+
+// ---------- 寫入：本機先落地，上傳丟背景 ----------
+
 /**
- * 寫入一律立刻送出，不受 syncing 影響。
- * （用 isSyncing 當互斥鎖是經典地雷：Apps Script 冷啟動 5~10 秒，
- *   使用者開 App 後最容易操作的那段時間，寫入會被靜默丟掉。）
+ * 以前每個寫入都 await 一次 POST，Apps Script 一趟 1~3 秒（冷啟動更久），
+ * 存一筆照片判讀要等兩趟，操作起來就很鈍。
+ *
+ * 現在改成：更新本機狀態並立刻回傳，寫入排進佇列，由背景合併成一次請求送出。
+ * 資料安全性沒有變差 —— 佇列存在 localStorage，沒送成功不會消失；
+ * 而且送出的仍然是「逐列 upsert / delete」，不是整表覆寫。
  */
-async function push(action, body) {
+function enqueue(action, body) {
+  const box = readOutbox();
+  box.push({ id: uid('ob'), action, body, at: nowStamp() });
+  writeOutbox(box);
+  emit('sync');
+  if (getSyncMode() === 'auto') scheduleFlush();
+}
+
+let flushTimer = null;
+let flushing = false;
+
+/** 短暫延遲再送，讓連續幾個寫入合併成同一批 */
+function scheduleFlush(delay = 800) {
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(() => { flushOutbox().catch(() => {}); }, delay);
+}
+
+export const isPushing = () => flushing;
+
+export async function flushOutbox() {
+  if (flushing) return { sent: 0, failed: readOutbox().length, busy: true };
+  const box = readOutbox();
+  if (!box.length) return { sent: 0, failed: 0 };
+
+  flushing = true;
+  emit('sync');
   try {
-    await gasPost(action, body);
-    return true;
-  } catch (err) {
-    const box = readOutbox();
-    box.push({ id: uid('ob'), action, body, at: nowStamp(), error: err.message });
-    writeOutbox(box);
-    state.lastError = err.message;
+    // 整批一次送出，省掉 N 趟往返
+    const ops = box.map(j => ({ action: j.action, body: j.body }));
+    let result;
+    try {
+      result = await gasPost('batch', { ops });
+    } catch (err) {
+      // 後端還是舊版沒有 batch，退回逐筆送
+      if (/Unknown action/i.test(err.message)) return await flushOneByOne(box);
+      markFailure(box, err.message);
+      state.lastError = err.message;
+      return { sent: 0, failed: box.length };
+    }
+
+    // 後端會回每一筆的成敗，只留下失敗的那些，成功的不會重送造成重複
+    const results = Array.isArray(result.results) ? result.results : [];
+    const remain = [];
+    let sent = 0;
+    box.forEach((job, i) => {
+      const r = results[i];
+      if (!r || r.ok) { sent++; return; }
+      remain.push({ ...job, error: r.error || '寫入失敗' });
+    });
+    writeOutbox(remain);
+    state.lastError = remain.length ? remain[remain.length - 1].error : null;
+    return { sent, failed: remain.length };
+  } finally {
+    flushing = false;
     emit('sync');
-    return false;
   }
 }
 
-export async function flushOutbox() {
-  let box = readOutbox();
-  if (!box.length) return { sent: 0, failed: 0 };
+async function flushOneByOne(box) {
   const remain = [];
   let sent = 0;
   for (const job of box) {
     try { await gasPost(job.action, job.body); sent++; }
-    catch { remain.push(job); }
+    catch (err) { remain.push({ ...job, error: err.message }); }
   }
   writeOutbox(remain);
-  emit('sync');
+  state.lastError = remain.length ? remain[remain.length - 1].error : null;
   return { sent, failed: remain.length };
+}
+
+function markFailure(box, message) {
+  writeOutbox(box.map(j => ({ ...j, error: message })));
 }
 
 // ============================================================
@@ -224,7 +291,7 @@ export async function saveFood(food) {
   if (idx === -1) state.foods.push(item); else state.foods[idx] = item;
   saveLocal();
   emit('data');
-  await push('upsertFood', { food: serialize(item) });
+  enqueue('upsertFood', { food: serialize(item) });
   return item;
 }
 
@@ -237,7 +304,7 @@ export async function saveFoodsBulk(foods) {
   });
   saveLocal();
   emit('data');
-  await push('upsertFoods', { foods: items.map(serialize) });
+  enqueue('upsertFoods', { foods: items.map(serialize) });
   return items;
 }
 
@@ -245,7 +312,7 @@ export async function deleteFood(id) {
   state.foods = state.foods.filter(f => f.id !== id);
   saveLocal();
   emit('data');
-  await push('deleteFoods', { ids: [id] });
+  enqueue('deleteFoods', { ids: [id] });
 }
 
 /** 依名稱或別名找已建檔的食物 */
@@ -280,7 +347,7 @@ async function touchFood(id) {
   f.lastUsedAt = nowStamp();
   f.updatedAt = f.lastUsedAt;
   saveLocal();
-  await push('upsertFood', { food: serialize(f) });
+  enqueue('upsertFood', { food: serialize(f) });
 }
 
 // ============================================================
@@ -294,7 +361,7 @@ export async function saveLog(log) {
   if (isNew) state.logs.push(item); else state.logs[idx] = item;
   saveLocal();
   emit('data');
-  await push('upsertLog', { log: serialize(item) });
+  enqueue('upsertLog', { log: serialize(item) });
   if (isNew && item.foodId && item.status === 'confirmed') await touchFood(item.foodId);
   return item;
 }
@@ -304,11 +371,11 @@ export async function deleteLog(id, { trashPhotos: alsoTrash = true } = {}) {
   state.logs = state.logs.filter(l => l.id !== id);
   saveLocal();
   emit('data');
-  await push('deleteLogs', { ids: [id] });
+  enqueue('deleteLogs', { ids: [id] });
   // 刪掉紀錄不會自動清掉 Drive 檔案，所以這裡明確連帶丟進垃圾桶，
   // 避免每天拍照累積出大量孤兒檔。
   if (alsoTrash && log?.photoFileIds?.length) {
-    await push('deletePhotos', { fileIds: log.photoFileIds });
+    enqueue('deletePhotos', { fileIds: log.photoFileIds });
   }
 }
 
@@ -341,7 +408,7 @@ export async function saveBody(record) {
   if (idx === -1) state.body.push(item); else state.body[idx] = item;
   saveLocal();
   emit('data');
-  await push('upsertBody', { record: serialize(item) });
+  enqueue('upsertBody', { record: serialize(item) });
   return item;
 }
 
@@ -349,7 +416,7 @@ export async function deleteBody(id) {
   state.body = state.body.filter(b => b.id !== id);
   saveLocal();
   emit('data');
-  await push('deleteBody', { ids: [id] });
+  enqueue('deleteBody', { ids: [id] });
 }
 
 export function bodyHistory() {
@@ -369,7 +436,7 @@ export async function setMeta(key, value) {
   state.meta[key] = value;
   saveLocal();
   emit('data');
-  await push('setMeta', { entries: [{ key, value }] });
+  enqueue('setMeta', { entries: [{ key, value }] });
 }
 
 export const getMeta = (key, fallback = null) =>
