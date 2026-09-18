@@ -6,7 +6,7 @@ import { renderAdd } from './screens/add.js';
 import { renderFoods } from './screens/foods.js';
 import { renderStats } from './screens/stats.js';
 import { renderProfile } from './screens/profile.js';
-import { $, $$, toast } from './util.js';
+import { $, $$, toast, showWorking, hideWorking } from './util.js';
 
 const RENDERERS = {
   today: renderToday,
@@ -92,7 +92,10 @@ async function boot() {
 
     // 開機拉一次雲端真相。失敗也不擋操作 —— 寫入是逐列的，
     // 就算初次拉取沒成功，之後的新增或刪除也只會動到指定的那一列。
+    // Apps Script 冷啟動要 5～10 秒，所以這段一定要有進行中的提示。
+    showWorking('連線同步中…');
     const ok = await syncFromCloud({ silent: true });
+    hideWorking();
     if (!ok && state.lastError) {
       toast(`同步失敗：${state.lastError}`, 'error');
     }

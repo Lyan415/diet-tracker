@@ -15,7 +15,7 @@
  * 所有 AI 產出的數字都帶 source 與 confidence，且一律要使用者確認才計入。
  */
 
-import { DEFAULT_GEMINI_MODEL, GEMINI_ENDPOINT } from './config.js';
+import { DEFAULT_GEMINI_MODEL, GEMINI_ENDPOINT, NUTRITION_SOURCES } from './config.js';
 import { getCredentials } from './gas.js';
 
 // ============================================================
@@ -60,20 +60,31 @@ const EXTRACT_RULES = `你是食品包裝與餐點判讀助理，服務對象在
 //  階段二：查資料
 // ============================================================
 
+const SOURCE_BLOCK = NUTRITION_SOURCES.map((t, i) => {
+  const lines = t.sites.map(x => `   - ${x.name}（${x.domain}）`).join('\n');
+  return `${i + 1}. ${t.tier}\n${lines}`;
+}).join('\n');
+
 const LOOKUP_RULES = `你是營養成分查詢助理，服務對象在台灣。請用 Google 搜尋查證，不要憑印象作答。
 
-來源優先順序：
-1. 衛生福利部食品藥物管理署「食品營養成分資料庫」
-2. 食品製造商或連鎖餐飲業者的官方營養資訊
-3. 其他可信的營養資料網站
+【指定查詢來源】請依食物類型挑對應那一層，並優先在這些網站中找：
 
-規則：
+${SOURCE_BLOCK}
+
+判斷哪一層的原則：
+- 生鮮食材、肉類、蔬果、米麵、調味料等原物料 → 第 1 層。
+- 明確講出品牌的連鎖店商品（麥當勞大麥克、摩斯米漢堡等）→ 第 2 層該品牌官網。
+- 沒有品牌的傳統早餐店、路邊小吃、自助餐（美而美蛋餅、豬排堡等）→ 第 3 層的營養師專欄估算值。
+
+上述網站都查不到時，才可以退到其他可信來源（食品製造商官網、政府機關、學術單位）。
+無論用哪個，sourceNote 都要寫出實際採用的網站名稱，不可空白也不可含糊寫「網路資料」。
+
+【其他規則】
 - 營養素一律換算成「每 100 公克」，baseUnit 填 "gram"、gramsPerUnit 填 100。
-- 若查到的資料只有「每份」而查不到一份幾克，則 baseUnit 填 "serve"、gramsPerUnit 填 null、unitLabel 寫出那一份是什麼（例：一個便當）。
+- 若查到的資料只有「每份」而查不到一份幾克（例如一個漢堡、一個便當），則 baseUnit 填 "serve"、gramsPerUnit 填 null、unitLabel 寫出那一份是什麼。
 - kcal 與 protein 是必要欄位，盡最大努力給值。其餘查不到就填 null，不要用 0 代替不知道。
-- sourceNote 要寫出實際採用的來源名稱，不可空白。
-- 查到可靠來源 source 填 "web"；查不到只能推估就填 "model"、confidence 填 "low"，並在 sourceNote 註明是推估值。
-- servingGrams 若查得到（常見包裝規格）就填，查不到填 null，不要猜 100。
+- 查到指定來源 source 填 "web"、confidence 填 "high"；只查到第 3 層的估算值 confidence 填 "medium"；完全查不到只能推估就 source 填 "model"、confidence 填 "low"，並在 sourceNote 註明是推估值。
+- servingGrams 若查得到（常見包裝規格或單品重量）就填，查不到填 null，不要猜 100。
 
 只輸出 JSON，不要說明文字，不要 markdown 程式碼框：
 {"name":"","aliases":[],"category":"","baseUnit":"gram","gramsPerUnit":100,"unitLabel":"","servingGrams":null,"packGrams":null,"kcal":0,"protein":0,"fat":null,"carb":null,"sugar":null,"fiber":null,"sodium":null,"source":"web","sourceNote":"","confidence":"high"}`;

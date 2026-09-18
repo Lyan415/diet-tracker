@@ -2,8 +2,9 @@ import { state, rankedFoods, findFood, makeFood, saveFood, saveLog } from '../st
 import { portionOptions, portionGrams, scaleByPortion, portionReady } from '../nutrition.js';
 import { extractFromPhotos, lookupNutrition, SOURCE_LABEL } from '../gemini.js';
 import { compressImage, uploadPhoto } from '../gas.js';
-import { $, $$, esc, fmt, num, uid, todayStr, timeStr, nowStamp, toast, debounce } from '../util.js';
-import { NUTRIENTS } from '../config.js';
+import { $, $$, esc, fmt, num, uid, todayStr, timeStr, nowStamp, toast, debounce,
+         showWorking, updateWorking, hideWorking } from '../util.js';
+import { NUTRIENTS, NUTRITION_SOURCES } from '../config.js';
 import { go, refresh } from '../app.js';
 
 let mode = 'frequent';
@@ -224,9 +225,17 @@ function lookupPanel() {
       <input id="lookupName" type="text" placeholder="例：滷雞腿便當">
     </div>
     <button class="btn btn--primary btn--block" data-act="lookup" style="margin-top:12px">查詢</button>
-    <p class="small muted" style="margin:12px 0 0">
-      先比對食物庫，沒有才交給 Gemini 上網找。查到的數字一律標示來源，要你確認才會計入。
+    <p class="small muted" style="margin:12px 0 8px">
+      先比對食物庫，沒有才交給 Gemini 上網找。會依食物類型挑對應來源，並把實際採用的網站寫進備註。
     </p>
+    <details class="sources">
+      <summary class="small muted">指定的查詢來源（${NUTRITION_SOURCES.reduce((n, t) => n + t.sites.length, 0)} 個）</summary>
+      ${NUTRITION_SOURCES.map(t => `
+        <p class="small" style="margin:10px 0 2px"><strong>${esc(t.tier)}</strong></p>
+        <ul class="sources__list">
+          ${t.sites.map(x => `<li>${esc(x.name)}<span class="muted"> · ${esc(x.domain)}</span></li>`).join('')}
+        </ul>`).join('')}
+    </details>
   </div>`;
 }
 
@@ -382,7 +391,7 @@ async function runAnalyze() {
   if (!shots.length) return runLookup();
 
   await withBusy(async () => {
-    toast('判讀照片中…');
+    showWorking('判讀照片中…');
     const { items: extracted } = await extractFromPhotos({
       images: shots.map(s => ({ base64: s.base64, mimeType: s.mimeType })),
       textHint: hint
@@ -391,13 +400,17 @@ async function runAnalyze() {
 
     // 照片先上傳，拿到 Drive 連結
     const uploaded = [];
-    for (const s of shots) {
-      try { uploaded.push(await uploadPhoto(s.base64, s.mimeType)); }
+    for (let i = 0; i < shots.length; i++) {
+      updateWorking(`上傳照片 ${i + 1} / ${shots.length}…`);
+      try { uploaded.push(await uploadPhoto(shots[i].base64, shots[i].mimeType)); }
       catch { toast('照片上傳失敗，數值仍會保留', 'error'); }
     }
 
     const built = [];
-    for (const ex of extracted) built.push(await resolveItem(ex));
+    for (let i = 0; i < extracted.length; i++) {
+      updateWorking(`整理資料 ${i + 1} / ${extracted.length}：${extracted[i].name}`);
+      built.push(await resolveItem(extracted[i]));
+    }
 
     candidates = built.map(b => toCandidate(b.item, {
       photoUrls: uploaded.map(u => u.url),
@@ -455,7 +468,7 @@ async function resolveItem(ex) {
     };
   }
 
-  toast(`上網查「${ex.name}」…`);
+  updateWorking(`上網查「${ex.name}」，這步會慢一些…`);
   const { item, sources } = await lookupNutrition(ex.name, { brand: ex.brand, hint: ex.note });
   return {
     route: '網路查證', sources,
@@ -498,7 +511,7 @@ async function runLookup() {
   }
 
   await withBusy(async () => {
-    toast('上網查詢中…');
+    showWorking(`上網查「${name}」…`);
     const { item, sources } = await lookupNutrition(name);
     candidates = [toCandidate(item, {
       photoUrls: [], photoFileIds: [], entryMode: 'lookup', sources, route: '網路查證'
@@ -648,6 +661,7 @@ const confidenceText = (c) => ({ high: '高', medium: '中', low: '低' }[c] || 
 async function commitCandidates(status) {
   if (!candidates.length) return;
   await withBusy(async () => {
+    showWorking('寫入紀錄…');
     for (const c of candidates) {
       const it = c.item;
       const existing = it.existingId
@@ -736,6 +750,7 @@ async function withBusy(fn) {
     toast(err.message || '操作失敗', 'error');
   } finally {
     busy = false;
+    hideWorking();
     $$('#screen-add button').forEach(b => { b.disabled = false; });
     renderReview();
   }

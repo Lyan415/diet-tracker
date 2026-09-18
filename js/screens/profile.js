@@ -4,7 +4,8 @@ import { suggestedTargets, effectiveTargets, leanMass, ageFrom } from '../nutrit
 import { ACTIVITY_LEVELS, APP_VERSION, DEFAULT_GEMINI_MODEL } from '../config.js';
 import { getCredentials, setCredentials, ping, validGasUrl } from '../gas.js';
 import { openVault, sealVault } from '../vault.js';
-import { $, esc, fmt, num, todayStr, toast, confirmBox, round } from '../util.js';
+import { $, esc, fmt, num, todayStr, toast, confirmBox, round,
+         showWorking, hideWorking } from '../util.js';
 
 export function renderProfile() {
   const root = $('#screen-profile');
@@ -307,12 +308,20 @@ function wire(root) {
         const url = $('#cUrl').value.trim();
         if (!validGasUrl(url)) { box.textContent = '網址格式不對，結尾要是 /exec'; return; }
         box.textContent = '連線中…';
-        const r = await ping(url, $('#cToken').value.trim());
+        showWorking('測試連線中…');
+        let r;
+        try { r = await ping(url, $('#cToken').value.trim()); }
+        finally { hideWorking(); }
         box.textContent = r.authed ? `連線成功，後端版本 ${r.version}` : `連上了，但 token 不正確`;
       }
 
       if (act === 'saveConn')  await saveConnection();
-      if (act === 'resync')    { await syncFromCloud(); toast('已重新同步', 'ok'); renderProfile(); }
+      if (act === 'resync') {
+        showWorking('重新同步中…');
+        try { await syncFromCloud(); toast('已重新同步', 'ok'); }
+        finally { hideWorking(); }
+        renderProfile();
+      }
       if (act === 'clearBox') {
         if (await confirmBox('要清空待送佇列嗎？這些變更就不會再上傳，但本機和雲端已有的資料不受影響。', '清空')) {
           clearOutbox();

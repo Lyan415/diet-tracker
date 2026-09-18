@@ -1,5 +1,5 @@
 // 改版時只要動這一行，畫面右下角的版本標記就會跟著變，方便確認手機拿到的是不是新版
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.3.0';
 
 export const TZ = 'Asia/Taipei';
 
@@ -52,4 +52,36 @@ export const NUTRIENTS = [
   { key: 'sugar',   label: '糖',     unit: 'g' },
   { key: 'fiber',   label: '纖維',   unit: 'g' },
   { key: 'sodium',  label: '鈉',     unit: 'mg' }
+];
+
+/**
+ * 上網查營養成分時的指定來源，依食物類型分層。
+ * Gemini 的 prompt 和「手動查食物」畫面都讀這一份，要增刪只改這裡。
+ */
+export const NUTRITION_SOURCES = [
+  {
+    tier: '生鮮、基礎食材與原物料',
+    sites: [
+      { name: '衛福部食藥署 食品營養成分資料庫', domain: 'fda.gov.tw' },
+      { name: '機能營養管理資訊網（食藥署資料圖表化）', domain: 'justnutrition.tw' },
+      { name: '安永生活誌 台灣常見食物營養成分資料庫', domain: 'anyongfresh.com' }
+    ]
+  },
+  {
+    tier: '連鎖速食與早午餐品牌',
+    sites: [
+      { name: '麥當勞 營養計算機', domain: 'mcdonalds.com' },
+      { name: '摩斯漢堡 商品營養分析表', domain: 'mos.com.tw' },
+      { name: '漢堡王 食物營養成份參考表', domain: 'burgerking.com.tw' },
+      { name: '麥味登 官網產品介紹', domain: 'mwd.com.tw' },
+      { name: '台大膳食協調委員會 校內早餐類熱量表', domain: 'ntu.edu.tw' }
+    ]
+  },
+  {
+    tier: '傳統早餐店、一般小吃的估算值',
+    sites: [
+      { name: '好食課 早餐店熱量與減肥吃法', domain: 'learneating.com' },
+      { name: 'Nuture Fit 全台早餐店漢堡熱量表', domain: 'nuturefit.com' }
+    ]
+  }
 ];

@@ -442,6 +442,78 @@ textarea { resize: vertical; min-height: 68px; }
 .toast--error { border-color: var(--ps-circle); color: var(--ps-circle); }
 .toast--ok { border-color: var(--ps-triangle); color: var(--ps-triangle); }
 
+.sources { margin-top: 4px; }
+.sources summary { cursor: pointer; }
+.sources__list {
+  margin: 0 0 4px;
+  padding-left: 20px;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+/* ---------- 處理中遮罩 ---------- */
+
+.working {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 14, .82);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  z-index: 80;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+.working.is-visible { opacity: 1; pointer-events: auto; }
+
+.working__panel {
+  text-align: center;
+  padding: 26px 30px;
+  max-width: 300px;
+}
+
+.working__ring {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 20px;
+  animation: working-spin 2.4s linear infinite;
+}
+
+.working__ring span {
+  position: absolute;
+  font-size: 1.28rem;
+  line-height: 1;
+  left: 50%;
+  top: 50%;
+  margin: -0.64rem 0 0 -0.64rem;
+  animation: working-pulse 1.2s ease-in-out infinite;
+}
+.working__ring span:nth-child(1) { transform: translate(0, -30px);  color: var(--ps-triangle); animation-delay: 0s; }
+.working__ring span:nth-child(2) { transform: translate(30px, 0);   color: var(--ps-circle);   animation-delay: .3s; }
+.working__ring span:nth-child(3) { transform: translate(0, 30px);   color: var(--ps-cross);    animation-delay: .6s; }
+.working__ring span:nth-child(4) { transform: translate(-30px, 0);  color: var(--ps-square);   animation-delay: .9s; }
+
+@keyframes working-spin { to { transform: rotate(360deg); } }
+@keyframes working-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+
+.working__stage { margin: 0 0 6px; font-weight: 500; }
+.working__time {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 關閉動態效果時符號不轉也不閃，但秒數照樣在跳，仍看得出還在運作 */
+@media (prefers-reduced-motion: reduce) {
+  .working__ring { animation: none; }
+  .working__ring span { animation: none; opacity: .85; }
+}
+
 /* ---------- 圖表 ---------- */
 
 .chart { width: 100%; height: auto; display: block; }

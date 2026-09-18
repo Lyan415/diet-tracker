@@ -105,6 +105,58 @@ export function toast(message, kind = 'info') {
   toastTimer = setTimeout(() => box.classList.remove('is-visible'), 3200);
 }
 
+// ---------- 處理中的遮罩 ----------
+
+let workingTimer = null;
+let workingStart = 0;
+
+/**
+ * Gemini 判讀常要 10～20 秒，沒有回饋會讓人以為當掉。
+ * 除了動畫之外一定要有「已經過幾秒」的計時 —— 關閉動態效果的使用者
+ * 看不到旋轉，但秒數照樣在跳，仍然知道程式還活著。
+ */
+export function showWorking(text) {
+  let box = $('#working');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'working';
+    box.className = 'working';
+    box.setAttribute('role', 'status');
+    box.setAttribute('aria-live', 'polite');
+    box.innerHTML = `
+      <div class="working__panel">
+        <div class="working__ring" aria-hidden="true">
+          <span>△</span><span>○</span><span>✕</span><span>□</span>
+        </div>
+        <p class="working__stage" id="workingStage"></p>
+        <p class="working__time" id="workingTime">已經過 0 秒</p>
+      </div>`;
+    document.body.appendChild(box);
+  }
+  box.classList.add('is-visible');
+  workingStart = Date.now();
+  updateWorking(text);
+
+  clearInterval(workingTimer);
+  workingTimer = setInterval(() => {
+    const el = $('#workingTime');
+    if (!el) return;
+    const s = Math.round((Date.now() - workingStart) / 1000);
+    el.textContent = s > 25 ? `已經過 ${s} 秒，照片較多時會久一些` : `已經過 ${s} 秒`;
+  }, 1000);
+}
+
+export function updateWorking(text) {
+  const el = $('#workingStage');
+  if (el) el.textContent = text;
+}
+
+export function hideWorking() {
+  clearInterval(workingTimer);
+  workingTimer = null;
+  $('#working')?.classList.remove('is-visible');
+}
+
 export function confirmBox(message, confirmLabel = '確定') {
   return new Promise((resolve) => {
     const wrap = document.createElement('div');
